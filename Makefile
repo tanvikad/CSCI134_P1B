@@ -1,17 +1,17 @@
-output: lab1a.c
-	gcc -Wall -Wextra lab1a.c -o lab1a
+output: lab1b.c
+	gcc -Wall -Wextra lab1b.c -o lab1b
 
-debug: lab1a.c
-	gcc -Wall -Wextra -g lab1a.c -o lab1a
+debug: lab1b.c
+	gcc -Wall -Wextra -g lab1b.c -o lab1b
 
 clean:
 	rm -f *.o
-	rm -f lab1a
+	rm -f lab1b
 	rm -f *.gz
 	rm -f *.txt
 
 dist: 
-	tar -czf lab1a-40205638.tar.gz lab1a.c Makefile README
+	tar -czf lab1b-40205638.tar.gz lab1b.c Makefile README
 
 # check: 
 	
