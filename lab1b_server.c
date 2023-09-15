@@ -14,7 +14,7 @@
 
 
 //if it returns -1, the child should not be written to
-int input_read(int fd,  int shell_fd, int pid) {
+int input_read(int fd,  int shell_fd, int newsockfd) {
     int size_to_read = 100;
     char buffer[size_to_read]; 
     int how_much_read = read(fd, buffer, size_to_read);
@@ -22,54 +22,44 @@ int input_read(int fd,  int shell_fd, int pid) {
         fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
         exit(1);
     }
-    for (int i = 0; i < how_much_read; i++) {
-        // EOF is a 0x04
-        if(buffer[i] == 4) {
-            if(fd == 0) {
-                return -1; 
-            } else {
 
-                return -2; 
-            }
-        }
-        if(buffer[i] == 3) {
-            kill(pid, SIGINT);
-            return 0;
-        }
+    for (int i = 0; i < how_much_read; i++) {
+        if(buffer[i] == 4) {
+            return 1;
+        } 
+
         if(buffer[i] == '\r' || buffer[i] == '\n') {
-            if(fd == 0) {
-                //if we get input from the keyboard 
-                int ret = write(1,"\r\n", 2);
+            if(fd == newsockfd) {
+                int ret = write(shell_fd, "\n", 1);
                 if(ret == -1) {
                     fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
                     exit(1);
                 }
-                //should be sent the shell as well
-                ret = write(shell_fd, "\n", 1);
-                if(ret == -1 || errno == EPIPE) {
-                    return -3;
-                }
             } else {
-                int ret = write(1, "\r\n", 2);
+                int ret = write(newsockfd, "\r\n", 2);
                 if(ret == -1) {
                     fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
                     exit(1);
                 }
             }
         } else {
-            int ret = write(1, buffer+i, 1);
-            if(fd == 0) {
+            if (fd == newsockfd) {
+                int ret = write(shell_fd, buffer + i, 1);
                 if(ret == -1) {
                     fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
                     exit(1);
                 }
-                ret = write(shell_fd, buffer+i, 1);
-                if(ret == -1 || errno == EPIPE) {
-                    return -3;
+            } else {
+                int ret = write (newsockfd, buffer + i, 1);
+                if(ret == -1) {
+                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                    exit(1);
                 }
             }
         }
+
     }
+    
     return 0;
 }
 
@@ -108,6 +98,10 @@ int main(int argc, char *argv[]){
     if (port == -1) {
         fprintf(stderr, "Valid port not specified \n");
         exit(1);
+    } 
+
+    if (name_of_program  != NULL) {
+        printf("The name of the program is %s \n", name_of_program);
     }
     //read write 
     int tToS_fd[2];
@@ -156,11 +150,8 @@ int main(int argc, char *argv[]){
     }
 
     printf("Got a connection \r\n");
-    close(newsockfd);
+    // close(newsockfd);
     
-
-
-
 
     int pid = fork();
     if (pid == -1) {
@@ -183,10 +174,8 @@ int main(int argc, char *argv[]){
         close(tToS_fd[1]);
 
         if (name_of_program != NULL) {
-            printf("%s sad \n", name_of_program);
             if(execl(name_of_program, name_of_program, NULL) == -1) {
                 fprintf(stderr, "Exec failed due to %s\n", strerror(errno));
-                
                 exit(1);
             }
         }
@@ -204,13 +193,16 @@ int main(int argc, char *argv[]){
             poll_fds[1].fd = sToT_fd[0];
             poll_fds[1].events = POLLIN;
         }
-        poll_fds[0].fd = 0;
+        poll_fds[0].fd = newsockfd;
         poll_fds[0].events = POLLIN;
+
+        printf("fs are %d and %d \n\n", poll_fds[0].fd, poll_fds[1].fd);
         
-        int keyboard_alive = 1;
+        // int keyboard_alive = 1;
         int child_alive = 1; 
+        int tcp_alive = 1; 
         if(nfds == 1) child_alive = 0;
-        while(keyboard_alive || child_alive) {
+        while(tcp_alive || child_alive) {
             
             int ret = poll(poll_fds, nfds, -1);
             if (ret <= 0) {
@@ -218,41 +210,27 @@ int main(int argc, char *argv[]){
                 exit(1); 
             }
             for (int input_fd = 0; input_fd < nfds; input_fd++) {
+                if(poll_fds[input_fd].fd == sToT_fd[0]) {
+                    //the poll error happens on the child
+                    if (!(poll_fds[input_fd].revents & POLLIN) && poll_fds[input_fd].revents & POLLHUP) {
+                        tcp_alive = 0;
+                        child_alive = 0;
+                        continue;
+                    }
+                } 
+                
                 if (poll_fds[input_fd].revents & POLLIN) {
-                    int read_return = input_read(poll_fds[input_fd].fd,  tToS_fd[1],  pid);
-                    if(read_return == -1) {
+                    int read_return = input_read(poll_fds[input_fd].fd,  tToS_fd[1], newsockfd);
+                    if(read_return == 1) {
+                        printf("^C \n");
                         close(tToS_fd[1]);
-                        keyboard_alive = 0;
-                        continue;
-
-                    } else if (read_return == -2 ) {
-                        //we got an EOF from the shell
-                        keyboard_alive = 0;
-                        child_alive = 0;
-                        continue;
-
-                    } else if (read_return == -3 && nfds == 2) {
-                        //we got a EPIPE
-                        keyboard_alive = 0;
-                        child_alive = 0;
+                        tcp_alive = 0;
                         continue;
                     }
+
                 }
 
-                if (poll_fds[input_fd].revents & POLLERR || poll_fds[input_fd].revents & POLLHUP) {
 
-
-                    if(poll_fds[input_fd].fd != 0) {
-                        //the poll error happens on the child
-                        keyboard_alive = 0;
-                        child_alive = 0;
-                        break;
-                    } else {
-                        fprintf(stderr, "Polling failed on the keyboard %s\n", strerror(errno));
-                        exit(1);
-                    }
-                    poll_fds[input_fd].fd = -1;
-                }
             }
             
         }
