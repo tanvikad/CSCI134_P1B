@@ -27,59 +27,51 @@ void set_current_terminal(struct termios * current_terminal) {
 
 
 //if it returns -1, the child should not be written to
-int input_read(int fd,  int shell_fd) {
-    int size_to_read = 100;
+int input_read(int fd,  int socket_fd) {
+    int size_to_read = 1000000;
     char buffer[size_to_read]; 
     int how_much_read = read(fd, buffer, size_to_read);
     if(how_much_read == -1) {
         fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
         exit(1);
+    } else if (how_much_read == 0 && fd == socket_fd){
+        return 1; 
     }
     for (int i = 0; i < how_much_read; i++) {
-        // EOF is a 0x04
-        if(buffer[i] == 4) {
-            if(fd == 0) {
-                return -1; 
-            } else {
-
-                return -2; 
-            }
+        if(buffer[i] == 4 && fd == socket_fd) {
+            return 1;
         }
-    
         if(buffer[i] == '\r' || buffer[i] == '\n') {
-            if(fd == 0) {
-                //if we get input from the keyboard 
-                int ret = write(1,"\r\n", 2);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
-                //should be sent the shell as well
-                ret = write(shell_fd, "\n", 1);
-                if(ret == -1 || errno == EPIPE) {
-                    return -3;
-                }
-            } else {
-                int ret = write(1, "\r\n", 2);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
+            int ret = write(1, "\r\n", 2);
+            if(ret == -1) {
+                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                exit(1);
             }
-        } else {
-            int ret = write(1, buffer+i, 1);
             if(fd == 0) {
+                ret = write(socket_fd, "\n", 1);
                 if(ret == -1) {
-                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                    fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
                     exit(1);
                 }
-                ret = write(shell_fd, buffer+i, 1);
-                if(ret == -1 || errno == EPIPE) {
-                    return -3;
+            } 
+        } else {
+
+            int ret = write (1, buffer + i, 1);
+            if(ret == -1) {
+                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                exit(1);
+            }
+            if (fd == 0) {
+                int ret = write(socket_fd, buffer + i, 1);
+                if(ret == -1) {
+                    fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
+                    exit(1);
                 }
             }
         }
+
     }
+    
     return 0;
 }
 
@@ -129,36 +121,15 @@ int main(int argc, char *argv[]){
     int return_tcsetattr =  tcsetattr(0, TCSANOW, &new_terminal);
     if(return_tcsetattr != 0) {
         fprintf(stderr, "LUnable to set terminal attributes because of error: %s\n", strerror(errno));
+        set_current_terminal(&current_terminal);
         exit(1);    
     }
-
-    //read write 
-    int tToS_fd[2];
-    int sToT_fd[2];
-    
-    int return_from_pipe = pipe(tToS_fd);
-    int return_from_pipe2 = pipe(sToT_fd);
-
-    if(return_from_pipe == -1) {
-        fprintf(stderr, " Pipe 1 failed due to error error %s \n", strerror(errno));
-        exit(1);
-    }
-
-    if(return_from_pipe2 == -1) {
-        fprintf(stderr, " Pipe 2 failed due to error error %s \n", strerror(errno));
-        exit(1);
-    }
-
-    int nfds = 1;
-    struct pollfd poll_fds[nfds];
-    poll_fds[0].fd = 0;
-    poll_fds[0].events = POLLIN;
-    //Add the socket into here
 
     // This code was taken from cs.rpi 
     int socketfd = socket(AF_INET, SOCK_STREAM, 0);
     if (socketfd < 0) {
         fprintf(stderr, "ERROR opening socket due to erro %s \n", strerror(errno));
+        set_current_terminal(&current_terminal);
         exit(1);
     }
     struct sockaddr_in serv_addr;
@@ -174,55 +145,41 @@ int main(int argc, char *argv[]){
     serv_addr.sin_port = htons(port);
 
     if (connect(socketfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0)  {
+        set_current_terminal(&current_terminal);
         fprintf(stderr, "ERROR accepting socket due to error %s \r\n", strerror(errno));
+        exit(1);
     }
     
-    
+    int nfds = 2;
+    struct pollfd poll_fds[nfds];
+    poll_fds[0].fd = socketfd;
+    poll_fds[0].events = POLLIN;
+    poll_fds[1].fd = 0;
+    poll_fds[1].events = POLLIN; 
+
+
     int keyboard_alive = 1;
-    int child_alive = 1; 
-    if(nfds == 1) child_alive = 0;
-    while(keyboard_alive || child_alive) {
-        
+    int tcp_alive = 1; 
+    while(keyboard_alive || tcp_alive) {
         int ret = poll(poll_fds, nfds, -1);
         if (ret <= 0) {
             printf("Polling failed\r\n");
+            set_current_terminal(&current_terminal);
             exit(1); 
         }
         for (int input_fd = 0; input_fd < nfds; input_fd++) {
             if (poll_fds[input_fd].revents & POLLIN) {
-                int read_return = input_read(poll_fds[input_fd].fd,  tToS_fd[1]);
-                if(read_return == -1) {
-                    close(tToS_fd[1]);
-                    keyboard_alive = 0;
-                    continue;
-
-                } else if (read_return == -2 ) {
-                    //we got an EOF from the shell
-                    keyboard_alive = 0;
-                    child_alive = 0;
-                    continue;
-
-                } else if (read_return == -3 && nfds == 2) {
-                    //we got a EPIPE
-                    keyboard_alive = 0;
-                    child_alive = 0;
-                    continue;
+                int read_return = input_read(poll_fds[input_fd].fd,  socketfd);
+                if(read_return == 1) {
+                    set_current_terminal(&current_terminal);
+                    exit(0);
                 }
+
             }
-
             if (poll_fds[input_fd].revents & POLLERR || poll_fds[input_fd].revents & POLLHUP) {
-
-
-                if(poll_fds[input_fd].fd != 0) {
-                    //the poll error happens on the child
-                    keyboard_alive = 0;
-                    child_alive = 0;
-                    break;
-                } else {
-                    fprintf(stderr, "Polling failed on the keyboard %s\n", strerror(errno));
-                    exit(1);
-                }
-                poll_fds[input_fd].fd = -1;
+                // set_current_terminal(&current_terminal);
+                // exit(1);
+                poll_fds[input_fd].fd = -1; 
             }
         }
         
@@ -230,8 +187,6 @@ int main(int argc, char *argv[]){
     
 
 
-    // int status;
-    // waitpid(pid, &status, 0);
     // fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d \r\n", (status&0x7F), (status&0xff00)>>8);
     set_current_terminal(&current_terminal);
 

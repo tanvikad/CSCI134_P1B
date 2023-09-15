@@ -11,6 +11,7 @@
 #include <sys/types.h> 
 #include <netinet/in.h>
 #include <sys/wait.h>
+#include "zlib.h"
 
 
 //if it returns -1, the child should not be written to
@@ -27,37 +28,19 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
         if(buffer[i] == 4) {
             return 1;
         } 
-
-        if(buffer[i] == '\r' || buffer[i] == '\n') {
-            if(fd == newsockfd) {
-                int ret = write(shell_fd, "\n", 1);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
-            } else {
-                int ret = write(newsockfd, "\r\n", 2);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
+        if (fd == newsockfd) {
+            int ret = write(shell_fd, buffer + i, 1);
+            if(ret == -1) {
+                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                exit(1);
             }
         } else {
-            if (fd == newsockfd) {
-                int ret = write(shell_fd, buffer + i, 1);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
-            } else {
-                int ret = write (newsockfd, buffer + i, 1);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
+            int ret = write (newsockfd, buffer + i, 1);
+            if(ret == -1) {
+                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                exit(1);
             }
         }
-
     }
     
     return 0;
@@ -212,7 +195,7 @@ int main(int argc, char *argv[]){
             for (int input_fd = 0; input_fd < nfds; input_fd++) {
                 if(poll_fds[input_fd].fd == sToT_fd[0]) {
                     //the poll error happens on the child
-                    if (!(poll_fds[input_fd].revents & POLLIN) && poll_fds[input_fd].revents & POLLHUP) {
+                    if (!(poll_fds[input_fd].revents & POLLIN) && (poll_fds[input_fd].revents & POLLHUP)) {
                         tcp_alive = 0;
                         child_alive = 0;
                         continue;
@@ -222,7 +205,6 @@ int main(int argc, char *argv[]){
                 if (poll_fds[input_fd].revents & POLLIN) {
                     int read_return = input_read(poll_fds[input_fd].fd,  tToS_fd[1], newsockfd);
                     if(read_return == 1) {
-                        printf("^C \n");
                         close(tToS_fd[1]);
                         tcp_alive = 0;
                         continue;
