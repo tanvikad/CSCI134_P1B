@@ -8,18 +8,9 @@
 #include <string.h>
 #include <poll.h>
 #include <termios.h>
+#include <sys/types.h> 
+#include <netinet/in.h>
 #include <sys/wait.h>
-
-
-
-void set_current_terminal(struct termios * current_terminal) {
-    int return_tcsetattr =  tcsetattr(0, TCSANOW, current_terminal);
-    if(return_tcsetattr != 0) {
-        fprintf(stderr, "Unable to set terminal attributes because of error: %s\n", strerror(errno));
-        exit(1);    
-    }
-    exit(0);
-}
 
 
 //if it returns -1, the child should not be written to
@@ -88,43 +79,36 @@ int main(int argc, char *argv[]){
     int curr_option;
     const struct option options[] = {
         { "shell",  required_argument, NULL,  's' },
+        { "port",   required_argument, NULL,  'p'},
+        { "compress",   no_argument, NULL,  'c'},
         { 0, 0, 0, 0}
     };
 
     char* name_of_program = NULL;
+    int port = -1;
+    int got_compress = 0;
     while((curr_option = getopt_long(argc, argv, "s", options, NULL)) != -1)  {
         switch(curr_option) {
             case 's':
                 name_of_program = optarg;
                 break;
+            case 'p':
+                sscanf(optarg, "%d", &port);
+                break;
+            case 'c':
+                got_compress = 1;
+                break;
             default:
-                fprintf(stderr, "Use the options --shell. Getting error %s \n", strerror(errno));
+                fprintf(stderr, "Use the options --shell, --port, --compress. Getting error %s \n", strerror(errno));
                 exit(1);
                 break;
         }
     }
 
-
-    struct termios current_terminal;
-    int return_tcgetattr = tcgetattr(0, &current_terminal);
-    if(return_tcgetattr != 0) {
-        // TODO: check if error checking later 
-        fprintf(stderr, "Unable to get terminal attributes because of error: %s\n", strerror(errno));
+    if (port == -1) {
+        fprintf(stderr, "Valid port not specified \n");
         exit(1);
     }
-
-    struct termios new_terminal = current_terminal; 
-
-    new_terminal.c_iflag = ISTRIP;
-    new_terminal.c_oflag = 0;
-    new_terminal.c_lflag = 0;
-
-    int return_tcsetattr =  tcsetattr(0, TCSANOW, &new_terminal);
-    if(return_tcsetattr != 0) {
-        fprintf(stderr, "LUnable to set terminal attributes because of error: %s\n", strerror(errno));
-        exit(1);    
-    }
-
     //read write 
     int tToS_fd[2];
     int sToT_fd[2];
@@ -141,6 +125,41 @@ int main(int argc, char *argv[]){
         fprintf(stderr, " Pipe 2 failed due to error error %s \n", strerror(errno));
         exit(1);
     }
+
+    //waht should be the type of socket that I open
+    int socketfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socketfd < 0) {
+        fprintf(stderr, "ERROR opening socket due to erro %s \n", strerror(errno));
+        exit(1);
+    }
+    printf("the socket fd is %d \r\n", socketfd);
+
+    struct sockaddr_in serv_addr;
+    bzero((char *) &serv_addr, sizeof(serv_addr)); //make the server address all 0s
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port); //use htons to convert it into the network byte order
+    serv_addr.sin_addr.s_addr = INADDR_ANY; //you use the IP address of the one one the computer
+    
+    printf("The socket address is %d \r\n",serv_addr.sin_addr.s_addr);
+    if (bind(socketfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
+        fprintf(stderr, "ERROR binding to socket due to error %s \n", strerror(errno));
+        exit(1);
+    }
+
+    listen(socketfd,5);
+    struct sockaddr_in client_addr;
+    socklen_t clilen = (socklen_t)(sizeof(client_addr));
+    int newsockfd = accept(socketfd, (struct sockaddr *) &client_addr, &clilen);
+    if (newsockfd < 0){
+        fprintf(stderr, "ERROR on accept due to error:  %s \n", strerror(errno));
+        exit(1);
+    }
+
+    printf("Got a connection \r\n");
+    close(newsockfd);
+    
+
+
 
 
     int pid = fork();
@@ -167,6 +186,7 @@ int main(int argc, char *argv[]){
             printf("%s sad \n", name_of_program);
             if(execl(name_of_program, name_of_program, NULL) == -1) {
                 fprintf(stderr, "Exec failed due to %s\n", strerror(errno));
+                
                 exit(1);
             }
         }
@@ -243,7 +263,6 @@ int main(int argc, char *argv[]){
     int status;
     waitpid(pid, &status, 0);
     fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d \r\n", (status&0x7F), (status&0xff00)>>8);
-    set_current_terminal(&current_terminal);
 
     
 }
