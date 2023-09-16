@@ -13,7 +13,7 @@
 #include <netinet/in.h>
 #include <netdb.h> 
 
-
+#include "test.c"
 
 
 void set_current_terminal(struct termios * current_terminal) {
@@ -37,6 +37,13 @@ int input_read(int fd,  int socket_fd) {
     } else if (how_much_read == 0 && fd == socket_fd){
         return 1; 
     }
+    if(fd == 0) {
+        int ret = write(socket_fd, buffer, how_much_read);
+        if(ret == -1) {
+                fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
+                return 2;
+            }
+    }
     for (int i = 0; i < how_much_read; i++) {
         if(buffer[i] == 4 && fd == socket_fd) {
             return 1;
@@ -45,28 +52,14 @@ int input_read(int fd,  int socket_fd) {
             int ret = write(1, "\r\n", 2);
             if(ret == -1) {
                 fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                exit(1);
+                return 2;
             }
-            if(fd == 0) {
-                ret = write(socket_fd, "\n", 1);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
-            } 
+            
         } else {
-
             int ret = write (1, buffer + i, 1);
             if(ret == -1) {
                 fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                exit(1);
-            }
-            if (fd == 0) {
-                int ret = write(socket_fd, buffer + i, 1);
-                if(ret == -1) {
-                    fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
-                    exit(1);
-                }
+                return 2;
             }
         }
 
@@ -171,6 +164,10 @@ int main(int argc, char *argv[]){
             if (poll_fds[input_fd].revents & POLLIN) {
                 int read_return = input_read(poll_fds[input_fd].fd,  socketfd);
                 if(read_return == 1) {
+                    set_current_terminal(&current_terminal);
+                    exit(0);
+                }else if (read_return == 2) {
+                    //something failed;
                     set_current_terminal(&current_terminal);
                     exit(0);
                 }

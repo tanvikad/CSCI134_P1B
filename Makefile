@@ -1,15 +1,16 @@
 output: lab1b_client.c lab1b_server.c
-	gcc -Wall -Wextra -lz lab1b_client.c -o lab1b_client -lz
-	gcc -Wall -Wextra -lz lab1b_server.c -o lab1b_server -lz
+	make client;
+	make server;
 
 # debug: lab1b.c
 # 	gcc -Wall -Wextra -g lab1b.c -o lab1b
 
-client:  lab1b_client.c
+client:  lab1b_client.c test.c
 	gcc -Wall -Wextra  lab1b_client.c -o lab1b_client -lz
 
-server: lab1b_server.c
+server: lab1b_server.c test.c
 	gcc -Wall -Wextra lab1b_server.c -o lab1b_server -lz
+
 
 clean:
 	rm -f *.o
