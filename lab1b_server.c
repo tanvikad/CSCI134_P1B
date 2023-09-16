@@ -23,26 +23,26 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
         fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
         exit(1);
     }
-
-    for (int i = 0; i < how_much_read; i++) {
-        if(buffer[i] == 4) {
-            return 1;
-        } 
-        if (fd == newsockfd) {
+    if (fd == newsockfd) {
+        for (int i = 0; i < how_much_read; i++) {
+            if(buffer[i] == 4) {
+                return 1;
+            } 
             int ret = write(shell_fd, buffer + i, 1);
             if(ret == -1) {
-                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
-                exit(1);
-            }
-        } else {
-            int ret = write (newsockfd, buffer + i, 1);
-            if(ret == -1) {
-                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                fprintf(stderr, "Writing to shell failed due to %s\n", strerror(errno));
                 exit(1);
             }
         }
+        return 0;
     }
-    
+
+    int ret =  write(newsockfd, buffer, how_much_read);
+    if(ret == -1) {
+        fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
+        exit(1);
+    }
+
     return 0;
 }
 
