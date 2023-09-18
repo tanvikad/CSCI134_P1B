@@ -27,7 +27,7 @@ void set_current_terminal(struct termios * current_terminal) {
 
 
 //if it returns -1, the child should not be written to
-int input_read(int fd,  int socket_fd) {
+int input_read(int fd,  int socket_fd, int log_fd) {
     // int size_to_read = 1000000;
     char buffer[BUFFER_SIZE]; 
     char compressed_buffer[BUFFER_SIZE];
@@ -36,7 +36,7 @@ int input_read(int fd,  int socket_fd) {
     int how_much_read;
     if (fd != 0) {
         //we are reading from the socket
-        how_much_read = decompress_buffer(fd, buffer);
+        how_much_read = decompress_buffer(fd, buffer, log_fd);
 
     } else {
         // int ret = write(socket_fd, buffer, how_much_read);
@@ -46,7 +46,7 @@ int input_read(int fd,  int socket_fd) {
         // }
 
         //  we are going to write to the socket
-        int compressed_size = compress_buffer(fd, compressed_buffer, buffer, &original_size);
+        int compressed_size = compress_buffer(fd, compressed_buffer, buffer, &original_size, log_fd);
         how_much_read = original_size;
         // printf("How much read is %d \n\r", how_much_read);
         // printf("The compressed version is %d \n\r", compressed_size);
@@ -98,15 +98,21 @@ int main(int argc, char *argv[]){
     int curr_option;
     const struct option options[] = {
         { "port",  required_argument, NULL,  'p' },
+        { "log", required_argument, NULL, 'l'},
         { 0, 0, 0, 0}
     };
 
     int port = -1;
+    char* log_file = NULL;
+    int logfd = -1;
     while((curr_option = getopt_long(argc, argv, "p", options, NULL)) != -1)  {
         switch(curr_option) {
             case 'p':
                 // port = optarg;
                 sscanf(optarg, "%d", &port);
+                break;
+            case 'l':
+                log_file = optarg; 
                 break;
             default:
                 fprintf(stderr, "Use the options --port. Getting error %s \n", strerror(errno));
@@ -118,6 +124,11 @@ int main(int argc, char *argv[]){
     if (port == -1) {
         fprintf(stderr, "Port not specified \n");
         exit(1);
+    }
+
+    if(log_file != NULL) {
+        logfd = open(log_file, O_CREAT | O_WRONLY, S_IRWXU);
+        printf("The log file is %d", logfd);
     }
 
 
@@ -186,7 +197,7 @@ int main(int argc, char *argv[]){
         }
         for (int input_fd = 0; input_fd < nfds; input_fd++) {
             if (poll_fds[input_fd].revents & POLLIN) {
-                int read_return = input_read(poll_fds[input_fd].fd,  socketfd);
+                int read_return = input_read(poll_fds[input_fd].fd,  socketfd, logfd);
                 if(read_return == 1) {
                     set_current_terminal(&current_terminal);
                     exit(0);

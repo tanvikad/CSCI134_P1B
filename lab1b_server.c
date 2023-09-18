@@ -29,7 +29,7 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
     //     exit(1);
     // }
     if (fd == newsockfd) {
-        int how_much_read = decompress_buffer(newsockfd, buffer);
+        int how_much_read = decompress_buffer(newsockfd, buffer, -1);
         for (int i = 0; i < how_much_read; i++) {
             if(buffer[i] == 4) {
                 return 1;
@@ -50,7 +50,7 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
 
     //reading from the  
     // int how_much_read = read(fd, buffer, ACTUAL_SIZE);
-    int how_much_read = compress_buffer(fd, buffer, original_buffer, &original_size);
+    int how_much_read = compress_buffer(fd, buffer, original_buffer, &original_size, -1);
     int ret =  write(newsockfd, buffer, how_much_read);
 
     if(ret == -1) {
