@@ -17,14 +17,17 @@
 
 //if it returns -1, the child should not be written to
 int input_read(int fd,  int shell_fd, int newsockfd) {
-    int size_to_read = 300;
-    char buffer[size_to_read]; 
-    int how_much_read = read(fd, buffer, size_to_read);
-    if(how_much_read == -1) {
-        fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
-        exit(1);
-    }
+
+
+    // int size_to_read = 300;
+    char buffer[BUFFER_SIZE]; 
+    // int how_much_read = read(fd, buffer, size_to_read);
+    // if(how_much_read == -1) {
+    //     fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
+    //     exit(1);
+    // }
     if (fd == newsockfd) {
+        int how_much_read = decompress_buffer(newsockfd, buffer);
         for (int i = 0; i < how_much_read; i++) {
             if(buffer[i] == 4) {
                 return 1;
@@ -43,9 +46,11 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
         return 0;
     }
 
-    // compress_buffer (newsockfd);
-
+    //reading from the  
+    // int how_much_read = read(fd, buffer, ACTUAL_SIZE);
+    int how_much_read = compress_buffer(fd, buffer);
     int ret =  write(newsockfd, buffer, how_much_read);
+
     if(ret == -1) {
         fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
         exit(1);

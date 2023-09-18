@@ -28,22 +28,30 @@ void set_current_terminal(struct termios * current_terminal) {
 
 //if it returns -1, the child should not be written to
 int input_read(int fd,  int socket_fd) {
-    int size_to_read = 1000000;
-    char buffer[size_to_read]; 
-    int how_much_read = read(fd, buffer, size_to_read);
-    if(how_much_read == -1) {
+    // int size_to_read = 1000000;
+    char buffer[BUFFER_SIZE]; 
+    // int how_much_read = read(fd, buffer, size_to_read);
+    int how_much_read;
+    if (fd != 0) {
+        //we are reading from the socket
+        how_much_read = decompress_buffer(fd, buffer);
+    } else {
+        // int ret = write(socket_fd, buffer, how_much_read);
+        // if(ret == -1) {
+        //     fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
+        //     return 2;
+        // }
+
+        //  we are going to write to the socket
+        how_much_read = compress_buffer(fd, buffer);
+    }
+    if (how_much_read == -1) {
         fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
         exit(1);
     } else if (how_much_read == 0 && fd == socket_fd){
         return 1; 
     }
-    if(fd == 0) {
-        int ret = write(socket_fd, buffer, how_much_read);
-        if(ret == -1) {
-                fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
-                return 2;
-            }
-    }
+    
     for (int i = 0; i < how_much_read; i++) {
         if(buffer[i] == 4 && fd == socket_fd) {
             return 1;

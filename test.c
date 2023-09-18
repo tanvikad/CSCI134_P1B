@@ -13,14 +13,17 @@
 #include <sys/wait.h>
 #include "zlib.h"
 
+#define BUFFER_SIZE 400
+#define ACTUAL_SIZE 200
 
-void decompress_buffer(int fd) {
-    int CHUNK = 400;
+//we want to read
+int decompress_buffer(int fd, char* buffer) {
+    // int CHUNK = 400;
     int ret;
     unsigned have;
     z_stream strm;
-    unsigned char in[CHUNK];
-    unsigned char out[CHUNK];
+    unsigned char in[BUFFER_SIZE];
+    unsigned char out[BUFFER_SIZE];
 
     /* allocate inflate state */
     strm.zalloc = Z_NULL;
@@ -36,7 +39,7 @@ void decompress_buffer(int fd) {
     /* decompress until deflate stream ends or end of file */
      /* decompress until deflate stream ends or end of file */
     do {
-        strm.avail_in = read(fd, in, CHUNK);
+        strm.avail_in = read(fd, in, ACTUAL_SIZE);
         if (strm.avail_in == -1) {
             fprintf(stderr, "Failed on the read \n");
             exit(1);
@@ -47,7 +50,7 @@ void decompress_buffer(int fd) {
 
         /* run inflate() on input until output buffer not full */
         do {
-            strm.avail_out = CHUNK;
+            strm.avail_out = BUFFER_SIZE;
             strm.next_out = out;
             ret = inflate(&strm, Z_NO_FLUSH);
             // assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
@@ -63,7 +66,7 @@ void decompress_buffer(int fd) {
                     (void)inflateEnd(&strm);
                     return ret;
             }
-            have = CHUNK - strm.avail_out;
+            have = BUFFER_SIZE - strm.avail_out;
             if (write(1, out, have) != have) {
                 (void)inflateEnd(&strm);
                 return Z_ERRNO;
@@ -73,17 +76,19 @@ void decompress_buffer(int fd) {
         /* done when inflate() says it's done */
     } while (ret != Z_STREAM_END);
 
+    buffer = out; 
+    return have; 
+
 }
-void compress_buffer( int fd) {
-    int CHUNK = 400;
+int  compress_buffer(int read_fd, char* buffer) {
     int ret, flush;
     unsigned have;
     z_stream strm;
-    unsigned char in[CHUNK];
-    unsigned char out[CHUNK];
+    unsigned char in[BUFFER_SIZE];
+    unsigned char out[BUFFER_SIZE];
 
     flush = Z_SYNC_FLUSH;
-    printf("The chunk is %d \n", CHUNK);
+    printf("The chunk is %d \n", ACTUAL_SIZE);
     /* allocate deflate state */
     strm.zalloc = Z_NULL;
     strm.zfree = Z_NULL;
@@ -96,16 +101,16 @@ void compress_buffer( int fd) {
     }
 
 
-    strm.avail_in = read(fd, in, CHUNK);
+    strm.avail_in = read(read_fd, in, ACTUAL_SIZE);
     strm.next_in = in; 
 
     printf("\n-------------\n");
     do {
         printf("\n ------ \n ");
-        strm.avail_out = CHUNK;
+        strm.avail_out = BUFFER_SIZE;
         strm.next_out = out;
         ret = deflate(&strm, flush);    /* no bad return value */   
-        have = CHUNK - strm.avail_out;
+        have = BUFFER_SIZE - strm.avail_out;
 
         printf("Have is %d \n", have);
         if (write(1, out, have) != have) {
@@ -115,8 +120,10 @@ void compress_buffer( int fd) {
         }   
     } while (strm.avail_out == 0);
 
-    write(fd, out, have);
+    // write(write_fd, out, have);
+
+    return have; 
     // printf("%s\n", out);
-    decompress_buffer(fd);
+    // decompress_buffer(fd);
 }
 
