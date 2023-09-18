@@ -16,7 +16,7 @@
 #include "test.c"
 
 //if it returns -1, the child should not be written to
-int input_read(int fd,  int shell_fd, int newsockfd) {
+int input_read(int fd,  int shell_fd, int newsockfd, int got_compress) {
 
 
     // int size_to_read = 300;
@@ -29,17 +29,27 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
     //     exit(1);
     // }
     if (fd == newsockfd) {
-        int how_much_read = decompress_buffer(newsockfd, buffer, -1);
+        int how_much_read; 
+        if(got_compress) {
+            how_much_read = decompress_buffer(newsockfd, buffer, -1);
+        } else {
+            how_much_read = read(fd, buffer, ACTUAL_SIZE);
+        }
         for (int i = 0; i < how_much_read; i++) {
             if(buffer[i] == 4) {
                 return 1;
             } 
             int ret; 
-            if(buffer[i] == '\r') {
-                ret = write(shell_fd, "\n", 1);
-            }else {
+            if(got_compress) {
+                if(buffer[i] == '\r') {
+                    ret = write(shell_fd, "\n", 1);
+                }else {
+                    ret = write(shell_fd, buffer + i, 1);
+                } 
+            } else {
                 ret = write(shell_fd, buffer + i, 1);
-            } 
+            }
+            
             if(ret == -1) {
                 fprintf(stderr, "Writing to shell failed due to %s\n", strerror(errno));
                 exit(1);
@@ -50,7 +60,12 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
 
     //reading from the  
     // int how_much_read = read(fd, buffer, ACTUAL_SIZE);
-    int how_much_read = compress_buffer(fd, buffer, original_buffer, &original_size, -1);
+    int how_much_read;
+    if(got_compress) {
+        how_much_read = compress_buffer(fd, buffer, original_buffer, &original_size, -1);
+    } else {
+        how_much_read = read(fd, buffer, ACTUAL_SIZE);
+    }
     int ret =  write(newsockfd, buffer, how_much_read);
 
     if(ret == -1) {
@@ -216,7 +231,7 @@ int main(int argc, char *argv[]){
                 } 
                 
                 if (poll_fds[input_fd].revents & POLLIN) {
-                    int read_return = input_read(poll_fds[input_fd].fd,  tToS_fd[1], newsockfd);
+                    int read_return = input_read(poll_fds[input_fd].fd,  tToS_fd[1], newsockfd, got_compress);
                     if(read_return == 1) {
                         close(tToS_fd[1]);
                         tcp_alive = 0;

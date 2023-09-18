@@ -27,7 +27,7 @@ void set_current_terminal(struct termios * current_terminal) {
 
 
 //if it returns -1, the child should not be written to
-int input_read(int fd,  int socket_fd, int log_fd) {
+int input_read_compressed(int fd,  int socket_fd, int log_fd) {
     // int size_to_read = 1000000;
     char buffer[BUFFER_SIZE]; 
     char compressed_buffer[BUFFER_SIZE];
@@ -39,23 +39,13 @@ int input_read(int fd,  int socket_fd, int log_fd) {
         how_much_read = decompress_buffer(fd, buffer, log_fd);
 
     } else {
-        // int ret = write(socket_fd, buffer, how_much_read);
-        // if(ret == -1) {
-        //     fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
-        //     return 2;
-        // }
 
-        //  we are going to write to the socket
         int compressed_size = compress_buffer(fd, compressed_buffer, buffer, &original_size, log_fd);
         how_much_read = original_size;
-        // printf("How much read is %d \n\r", how_much_read);
-        // printf("The compressed version is %d \n\r", compressed_size);
-        // write(1, buffer, how_much_read);
+
 
         int ret = write(socket_fd, compressed_buffer, compressed_size);
-        // printf("\r\n");
-        // write(1, compressed_buffer, compressed_size);
-        // printf("\r\n");
+
         if(ret == -1) {
             fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
             return 2;
@@ -93,19 +83,70 @@ int input_read(int fd,  int socket_fd, int log_fd) {
 }
 
 
+int input_read(int fd,  int socket_fd) {
+    char buffer[ACTUAL_SIZE]; 
+    int how_much_read = read(fd, buffer, ACTUAL_SIZE);
+    if(how_much_read == -1) {
+        fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
+        exit(1);
+    } else if (how_much_read == 0 && fd == socket_fd){
+        return 1; 
+    }
+    for (int i = 0; i < how_much_read; i++) {
+        if(buffer[i] == 4 && fd == socket_fd) {
+            return 1;
+        }
+        if(buffer[i] == '\r' || buffer[i] == '\n') {
+            int ret = write(1, "\r\n", 2);
+            if(ret == -1) {
+                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                exit(1);
+            }
+            if(fd == 0) {
+                ret = write(socket_fd, "\n", 1);
+                if(ret == -1) {
+                    fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
+                    exit(1);
+                }
+            } 
+        } else {
+
+            int ret = write (1, buffer + i, 1);
+            if(ret == -1) {
+                fprintf(stderr, "Writing to stdout failed due to %s\n", strerror(errno));
+                exit(1);
+            }
+            if (fd == 0) {
+                int ret = write(socket_fd, buffer + i, 1);
+                if(ret == -1) {
+                    fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
+                    exit(1);
+                }
+            }
+        }
+
+    }
+    
+    return 0;
+}
+
+
+
 int main(int argc, char *argv[]){
     signal(SIGPIPE, SIG_IGN);
     int curr_option;
     const struct option options[] = {
         { "port",  required_argument, NULL,  'p' },
         { "log", required_argument, NULL, 'l'},
+        { "compress", no_argument, NULL, 'c'},
         { 0, 0, 0, 0}
     };
 
     int port = -1;
     char* log_file = NULL;
     int logfd = -1;
-    while((curr_option = getopt_long(argc, argv, "p", options, NULL)) != -1)  {
+    int is_compressed = 0; 
+    while((curr_option = getopt_long(argc, argv, "plc", options, NULL)) != -1)  {
         switch(curr_option) {
             case 'p':
                 // port = optarg;
@@ -114,8 +155,11 @@ int main(int argc, char *argv[]){
             case 'l':
                 log_file = optarg; 
                 break;
+            case 'c':
+                is_compressed = 1; 
+                break;
             default:
-                fprintf(stderr, "Use the options --port. Getting error %s \n", strerror(errno));
+                fprintf(stderr, "Use the options --port, or --log_ or --compress. Getting error %s \n", strerror(errno));
                 exit(1);
                 break;
         }
@@ -197,7 +241,13 @@ int main(int argc, char *argv[]){
         }
         for (int input_fd = 0; input_fd < nfds; input_fd++) {
             if (poll_fds[input_fd].revents & POLLIN) {
-                int read_return = input_read(poll_fds[input_fd].fd,  socketfd, logfd);
+                int read_return;
+                
+                if(is_compressed) {
+                    read_return =  input_read_compressed(poll_fds[input_fd].fd,  socketfd, logfd);
+                } else {
+                    read_return = input_read(poll_fds[input_fd].fd,  socketfd);
+                }
                 if(read_return == 1) {
                     set_current_terminal(&current_terminal);
                     exit(0);
