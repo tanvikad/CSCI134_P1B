@@ -21,6 +21,8 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
 
     // int size_to_read = 300;
     char buffer[BUFFER_SIZE]; 
+    char original_buffer[BUFFER_SIZE];
+    int original_size; 
     // int how_much_read = read(fd, buffer, size_to_read);
     // if(how_much_read == -1) {
     //     fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
@@ -48,7 +50,7 @@ int input_read(int fd,  int shell_fd, int newsockfd) {
 
     //reading from the  
     // int how_much_read = read(fd, buffer, ACTUAL_SIZE);
-    int how_much_read = compress_buffer(fd, buffer);
+    int how_much_read = compress_buffer(fd, buffer, original_buffer, &original_size);
     int ret =  write(newsockfd, buffer, how_much_read);
 
     if(ret == -1) {
