@@ -39,6 +39,11 @@ int input_read(int fd,  int shell_fd, int newsockfd, int got_compress) {
             if(buffer[i] == 4) {
                 return 1;
             } 
+
+            if(buffer[i] == 3) {
+                return 3; 
+            }
+
             int ret; 
             if(got_compress) {
                 if(buffer[i] == '\r') {
@@ -112,9 +117,9 @@ int main(int argc, char *argv[]){
         exit(1);
     } 
 
-    if (name_of_program  != NULL) {
-        printf("The name of the program is %s \n", name_of_program);
-    }
+    // if (name_of_program  != NULL) {
+    //     printf("The name of the program is %s \n", name_of_program);
+    // }
     //read write 
     int tToS_fd[2];
     int sToT_fd[2];
@@ -138,7 +143,6 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "ERROR opening socket due to erro %s \n", strerror(errno));
         exit(1);
     }
-    printf("the socket fd is %d \r\n", socketfd);
 
     struct sockaddr_in serv_addr;
     bzero((char *) &serv_addr, sizeof(serv_addr)); //make the server address all 0s
@@ -146,7 +150,7 @@ int main(int argc, char *argv[]){
     serv_addr.sin_port = htons(port); //use htons to convert it into the network byte order
     serv_addr.sin_addr.s_addr = INADDR_ANY; //you use the IP address of the one one the computer
     
-    printf("The socket address is %d \r\n",serv_addr.sin_addr.s_addr);
+    // printf("The socket address is %d \r\n",serv_addr.sin_addr.s_addr);
     if (bind(socketfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
         fprintf(stderr, "ERROR binding to socket due to error %s \n", strerror(errno));
         exit(1);
@@ -161,7 +165,7 @@ int main(int argc, char *argv[]){
         exit(1);
     }
 
-    printf("Got a connection \r\n");
+    // printf("Got a connection \r\n");
     // close(newsockfd);
     
     int pid = fork();
@@ -207,7 +211,7 @@ int main(int argc, char *argv[]){
         poll_fds[0].fd = newsockfd;
         poll_fds[0].events = POLLIN;
 
-        printf("fs are %d and %d \n\n", poll_fds[0].fd, poll_fds[1].fd);
+        // printf("fs are %d and %d \n\n", poll_fds[0].fd, poll_fds[1].fd);
         
         // int keyboard_alive = 1;
         int child_alive = 1; 
@@ -236,7 +240,10 @@ int main(int argc, char *argv[]){
                         close(tToS_fd[1]);
                         tcp_alive = 0;
                         continue;
+                    } else if (read_return == 3) {
+                        kill(pid, SIGINT);
                     }
+                    
 
                 }
 

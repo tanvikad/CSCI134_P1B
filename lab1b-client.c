@@ -83,9 +83,24 @@ int input_read_compressed(int fd,  int socket_fd, int log_fd) {
 }
 
 
-int input_read(int fd,  int socket_fd) {
+int input_read(int fd,  int socket_fd, int logfd) {
     char buffer[ACTUAL_SIZE]; 
     int how_much_read = read(fd, buffer, ACTUAL_SIZE);
+
+    if(fd == socket_fd && logfd != -1) {
+        char log_buf[100];
+        snprintf(log_buf, 100, "RECEIVED %d bytes: ", how_much_read);
+        write(logfd, log_buf, strlen(log_buf));
+        write(logfd, buffer, how_much_read);
+        write(logfd, "\n", 1);
+    }
+
+    if(fd != socket_fd && logfd != -1) {
+        char log_buf[100];
+        snprintf(log_buf, 100, "SENT %d bytes: ", how_much_read);
+        write(logfd, log_buf, strlen(log_buf));
+    }
+
     if(how_much_read == -1) {
         fprintf(stderr, "Reading failed due to error from %s\n", strerror(errno));
         exit(1);
@@ -108,6 +123,8 @@ int input_read(int fd,  int socket_fd) {
                     fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
                     exit(1);
                 }
+                write(logfd, "\n", 1);
+
             } 
         } else {
 
@@ -122,9 +139,14 @@ int input_read(int fd,  int socket_fd) {
                     fprintf(stderr, "Writing to socket failed due to %s\n", strerror(errno));
                     exit(1);
                 }
+                write(logfd, buffer+i, 1);
             }
         }
 
+    }
+
+    if(fd != socket_fd && logfd != -1) {
+        write(logfd, "\n", 1);
     }
     
     return 0;
@@ -172,7 +194,7 @@ int main(int argc, char *argv[]){
 
     if(log_file != NULL) {
         logfd = open(log_file, O_CREAT | O_WRONLY, S_IRWXU);
-        printf("The log file is %d", logfd);
+        // printf("The log file is %d", logfd);
     }
 
 
@@ -246,7 +268,7 @@ int main(int argc, char *argv[]){
                 if(is_compressed) {
                     read_return =  input_read_compressed(poll_fds[input_fd].fd,  socketfd, logfd);
                 } else {
-                    read_return = input_read(poll_fds[input_fd].fd,  socketfd);
+                    read_return = input_read(poll_fds[input_fd].fd,  socketfd, logfd);
                 }
                 if(read_return == 1) {
                     set_current_terminal(&current_terminal);
@@ -267,7 +289,6 @@ int main(int argc, char *argv[]){
         
     }
     
-
 
     // fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d \r\n", (status&0x7F), (status&0xff00)>>8);
     set_current_terminal(&current_terminal);

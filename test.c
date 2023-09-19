@@ -47,7 +47,7 @@ int decompress_buffer(int fd, char* buffer, int log_fd) {
 
     if(log_fd != -1) {
         char log_buf[100];
-        snprintf(log_buf, 100, "SENT %ld bytes:", strm.avail_in);
+        snprintf(log_buf, 100, "SENT %d bytes:", strm.avail_in);
         write(log_fd, log_buf, strlen(log_buf));
         // printf("log files is %d \n", log_fd);
         write(log_fd, in, strm.avail_in);
@@ -64,6 +64,8 @@ int decompress_buffer(int fd, char* buffer, int log_fd) {
     // write(1, out, have);
     memcpy(buffer, out, have);
     // buffer = out;
+
+    inflateEnd(&strm);
     return have; 
 
 }
@@ -89,7 +91,7 @@ int  compress_buffer(int read_fd, char* buffer, char* original_buffer, int* size
 
 
     strm.avail_in = read(read_fd, in, ACTUAL_SIZE);
-    strncpy(original_buffer, in, strm.avail_in);
+    strncpy(original_buffer, (const char *)(in), strm.avail_in);
     *size_original = strm.avail_in; 
     strm.next_in = in; 
 
@@ -106,6 +108,9 @@ int  compress_buffer(int read_fd, char* buffer, char* original_buffer, int* size
         write(log_fd, out, have);
         write(log_fd, "\n", 1);
     }
+
+    deflateEnd(&strm);
+
 
     // buffer = out;
 

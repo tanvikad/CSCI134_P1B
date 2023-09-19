@@ -1,0 +1,14 @@
+NAME: Tanvika Dasari
+EMAIL: tdasari@hmc.edu
+ID: 40205638
+
+
+lab1b-client.c : holds the code for the client which gets input from the user on the keyboard and from the server using the socket. 
+
+lab1b-server.c : holds the code for the server which forks and executes a shell program on the child. Then it uses pipes for IPC and the socket to talk to the client
+
+test.c : holds shared functions to compress and uncompress bytes used by both the client and server
+
+Makefile : file to make any of the .c files into executables
+
+README : explains what each file entails of. 
